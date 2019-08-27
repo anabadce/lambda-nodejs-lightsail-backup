@@ -1,0 +1,82 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "lambda-lightsail-snapshots: Lambda to do automatic backups for AWS Lightsail"
+
+Parameters:
+  IAMPolicyName:
+    Type: "String"
+    Default: "lightsail_snapshots"
+  IAMRoleName:
+    Type: "String"
+    Default: "LightsailsnapshotsRole"
+  LambdaName:
+    Type: "String"
+    Default: "LightSailBackup-1"
+
+Resources:
+  MyIAMRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      RoleName: !Ref "IAMRoleName"
+
+  MyIAMPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: !Ref "IAMPolicyName"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action:
+                - "lightsail:CreateInstanceSnapshot"
+                - "lightsail:DeleteInstanceSnapshot"
+                - "lightsail:GetInstanceSnapshot"
+                - "lightsail:GetInstanceSnapshots"
+            Resource: "*"
+      Roles:
+        - !Ref "MyIAMRole"
+
+  MyLambdaFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Handler: "index.handler"
+      Role: !GetAtt ["MyIAMRole", "Arn"]
+      Code:
+        ZipFile: |
+          exports.handler = (event, context, callback) => {
+              callback(null, "Hello World!");
+          };
+      Runtime: "nodejs8.10"
+      Tags:
+        - Key: "Name"
+          Value: !Ref "LambdaName"
+      Timeout: "60"
+
+  MyScheduledRule: 
+    Type: "AWS::Events::Rule"
+    Properties: 
+      Description: "Lightsailsnapshots schedule"
+      ScheduleExpression: "rate(1 day)"
+      State: "ENABLED"
+      Targets: 
+        - 
+          Arn: !GetAtt ["MyLambdaFunction", "Arn"]
+          Id: "MyLambdaFunction"
+
+  PermissionForEventsToInvokeLambda: 
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: 
+        Ref: "MyLambdaFunction"
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt ["MyScheduledRule", "Arn"]
